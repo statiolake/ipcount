@@ -1,0 +1,12 @@
+[package]
+name = "ipcount"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "ipunite"
+path = "src/bin/ipunite.rs"
+
+[dependencies]
+anyhow = "1.0.86"
+itertools = "0.13.0"
