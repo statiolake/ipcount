@@ -39,23 +39,25 @@ pub fn addrs_to_cidrs(addrs: &[Ipv4Addr]) -> Vec<Cidr> {
         .map(|addr| u32::from_be_bytes(addr.octets()) as u64);
 
     // Group each sequential addresses into an `exclusive` range
-    let addr_ranges_exclusive = addrs
-        // Add next addresses to make the sequential values exclusive
-        .flat_map(|addr| [addr, addr + 1])
+    let addrs_exlucive = addrs
+        // Add imaginary next addresses to make the sequential values exclusive. The second argument
+        // is to mark the imaginary address.
+        .flat_map(|addr| [(addr, false), (addr + 1, true)])
         .sorted()
-        .dedup()
+        // Prefer normal address over imaginary one
+        .dedup_by(|(addr1, _), (addr2, _)| *addr1 == *addr2)
         .tuple_windows()
-        .coalesce(|(x, y), (_, z)| {
-            if y + 1 == z {
-                // Combine two consecutive addresses into one
-                Ok((x, z))
-            } else {
-                Err(((x, y), (y, z)))
-            }
-        });
+        .fuse()
+        .peekable();
+
+    let addr_ranges_exclusive = addrs_exlucive.batching(|iter| {
+        iter.skip_while(|((_, is_imaginary), _)| *is_imaginary)
+            .take_while(|((addr1, is_imaginary), (addr2, _))| *addr2 == *addr1 + 1 && !is_imaginary)
+            .reduce(|(s, _), (_, e)| (s, e))
+    });
 
     addr_ranges_exclusive
-        .flat_map(|(start, end)| {
+        .flat_map(|((start, _), (end, _))| {
             let start = Ipv4Addr::from(
                 u32::try_from(start)
                     .expect("bug: start should be 32bit")
