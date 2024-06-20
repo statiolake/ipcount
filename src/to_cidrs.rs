@@ -33,17 +33,21 @@ pub fn range_to_cidrs(range: RangeInclusive<Ipv4Addr>) -> Vec<Cidr> {
 }
 
 pub fn addrs_to_cidrs(addrs: &[Ipv4Addr]) -> Vec<Cidr> {
+    if addrs.is_empty() {
+        return vec![];
+    }
+
     // Consider addresses as a u32s
-    let addrs = addrs
+    let mut addrs = addrs
         .iter()
         .map(|addr| u32::from_be_bytes(addr.octets()))
         .sorted()
         .dedup();
 
     let mut seq_addrs_chunks = vec![];
-    let mut seq_addrs = vec![];
+    let mut seq_addrs = vec![addrs.next().expect("bug: should not be empty")];
     for addr in addrs {
-        if seq_addrs.last().is_none() || *seq_addrs.last().unwrap() + 1 == addr {
+        if *seq_addrs.last().unwrap() + 1 == addr {
             seq_addrs.push(addr);
         } else {
             seq_addrs_chunks.push(seq_addrs);
