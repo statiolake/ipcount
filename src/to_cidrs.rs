@@ -33,44 +33,36 @@ pub fn range_to_cidrs(range: RangeInclusive<Ipv4Addr>) -> Vec<Cidr> {
 }
 
 pub fn addrs_to_cidrs(addrs: &[Ipv4Addr]) -> Vec<Cidr> {
-    // Consider addresses as a u64s (instead of u32s to avoid overflow)
+    // Consider addresses as a u32s
     let addrs = addrs
         .iter()
-        .map(|addr| u32::from_be_bytes(addr.octets()) as u64);
-
-    // Group each sequential addresses into an `exclusive` range
-    let addrs_exlucive = addrs
-        // Add imaginary next addresses to make the sequential values exclusive. The second argument
-        // is to mark the imaginary address.
-        .flat_map(|addr| [(addr, false), (addr + 1, true)])
+        .map(|addr| u32::from_be_bytes(addr.octets()))
         .sorted()
-        // Prefer normal address over imaginary one
-        .dedup_by(|(addr1, _), (addr2, _)| *addr1 == *addr2)
-        .tuple_windows()
-        .fuse()
-        .peekable();
+        .dedup();
 
-    let addr_ranges_exclusive = addrs_exlucive.batching(|iter| {
-        iter.skip_while(|((_, is_imaginary), _)| *is_imaginary)
-            .take_while(|((addr1, is_imaginary), (addr2, _))| *addr2 == *addr1 + 1 && !is_imaginary)
-            .reduce(|(s, _), (_, e)| (s, e))
-    });
+    let mut seq_addrs_chunks = vec![];
+    let mut seq_addrs = vec![];
+    for addr in addrs {
+        if seq_addrs.last().is_none() || *seq_addrs.last().unwrap() + 1 == addr {
+            seq_addrs.push(addr);
+        } else {
+            seq_addrs_chunks.push(seq_addrs);
+            seq_addrs = vec![addr];
+        }
+    }
+    seq_addrs_chunks.push(seq_addrs);
 
-    addr_ranges_exclusive
-        .flat_map(|((start, _), (end, _))| {
-            let start = Ipv4Addr::from(
-                u32::try_from(start)
-                    .expect("bug: start should be 32bit")
-                    .to_be_bytes(),
-            );
-            let end = Ipv4Addr::from(
-                u32::try_from(end - 1) // Convert to inclusive
-                    .expect("bug: end - 1 should be 32bit")
-                    .to_be_bytes(),
-            );
+    seq_addrs_chunks
+        .into_iter()
+        .map(|seq_addrs| {
+            let start = seq_addrs.first().expect("bug: should not be empty");
+            let end = seq_addrs.last().expect("bug: should not be empty");
+            let start = Ipv4Addr::from(start.to_be_bytes());
+            let end = Ipv4Addr::from(end.to_be_bytes());
 
-            range_to_cidrs(start..=end)
+            (start, end)
         })
+        .flat_map(|(start, end)| range_to_cidrs(start..=end))
         .collect_vec()
 }
 
