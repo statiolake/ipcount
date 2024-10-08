@@ -2,6 +2,9 @@
 name = "ipcount"
 version = "0.1.0"
 edition = "2021"
+author = "statiolake"
+description = "count IP addresses within a CIDR range, or make CIDR from a list of addresses"
+license = "MIT"
 
 [[bin]]
 name = "ipunite"
